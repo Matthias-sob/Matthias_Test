@@ -18,11 +18,23 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "string.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+
+#include "lwip.h"
+#include "ethernetif.h"
+#include "lwip/opt.h"
+#include "lwip/init.h"
+#include "netif/etharp.h"
+#include "lwip/netif.h"
+#include "lwip/timeouts.h"
+#if LWIP_DHCP
+#include "lwip/dhcp.h"
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,6 +54,7 @@ typedef struct __attribute__((packed))
     float rate_z;
 
     uint16_t temperature;
+
 } ImuSensorData_t;
 /* USER CODE END PTD */
 
@@ -57,7 +70,13 @@ typedef struct __attribute__((packed))
 
 /* Private variables ---------------------------------------------------------*/
 
+ETH_TxPacketConfigTypeDef TxConfig;
+ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
+ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
+
 COM_InitTypeDef BspCOMInit;
+
+ETH_HandleTypeDef heth;
 
 UART_HandleTypeDef huart4;
 DMA_NodeTypeDef Node_GPDMA1_Channel7;
@@ -66,6 +85,14 @@ DMA_HandleTypeDef handle_GPDMA1_Channel7;
 
 /* USER CODE BEGIN PV */
 // ###############################################################################
+
+// für ETH
+
+extern struct netif gnetif;
+
+// End für ETH
+
+
 uint8_t rx_byte;
 
 static uint8_t rxBuf[129];
@@ -136,9 +163,18 @@ volatile uint32_t parser_imu_print_count = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-
-
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_GPDMA1_Init(void);
+static void MX_UART4_Init(void);
+static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
+
+// für ETH
+
+static void Netif_Config(void);
+
+// End für ETH
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_GPDMA1_Init(void);
@@ -441,9 +477,17 @@ int main(void)
   MX_GPIO_Init();
   MX_GPDMA1_Init();
   MX_UART4_Init();
+  MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
   //HAL_UART_Receive_IT(&huart4, &rx_byte, 1);
   //HAL_UARTEx_ReceiveToIdle_IT(&huart4, rxBuf, sizeof(rxBuf));
+
+  // Für ETH
+
+  lwip_init();
+  Netif_Config();
+
+  // End für ETH
 
 
   if (HAL_UART_Receive_DMA(&huart4, dma_rx_buf, DMA_RX_BUF_SIZE) != HAL_OK)
@@ -476,38 +520,34 @@ int main(void)
   while (1)
   {
 
-	  process_new_dma_data();
+	  //process_new_dma_data();
+
+	  /*
 
 	     printf("headers=%lu frames=%lu error crc=%lu error etx=%lu error length=%lu er\r\n",
 	            (unsigned long)parser_header_count,
 	            (unsigned long)parser_frame_count,
 	            (unsigned long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
 
-/*
-
-	  uint16_t dma_pos = dma_get_pos();
-
-	  if (dma_pos != dma_last_pos)
-	  {
-	      printf("new data from %u to %u\r\n",
-	             dma_last_pos,
-	             dma_pos);
-
-	      dma_last_pos = dma_pos;
-	  }
-
-	  */
-
-	  /*
+*/
 
 
-	  printf("dma_pos: %u | dma_last_pos: %u\r\n",
-	         (unsigned int)dma_get_pos(),
-	         (unsigned int)dma_last_pos);
+	    //BSP_LED_Toggle(LED_GREEN);
 
-	         */
 
-	    BSP_LED_Toggle(LED_GREEN);
+
+	    /* Read a received packet from the Ethernet buffers and send it
+	                  to the lwIP for handling */
+	                 ethernetif_input(&gnetif);
+	                 /* Handle timeouts */
+	                 sys_check_timeouts();
+	    #if LWIP_NETIF_LINK_CALLBACK
+	                 Ethernet_Link_Periodic_Handle(&gnetif);
+	    #endif
+	    #if LWIP_DHCP
+	                 DHCP_Periodic_Handle(&gnetif);
+	    #endif
+
 	    HAL_Delay(500);
 
     /* USER CODE END WHILE */
@@ -574,6 +614,55 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief ETH Initialization Function
+  * @param None
+  * @retval None
+  */
+void MX_ETH_Init(void)
+{
+
+  /* USER CODE BEGIN ETH_Init 0 */
+
+  /* USER CODE END ETH_Init 0 */
+
+   static uint8_t MACAddr[6];
+
+  /* USER CODE BEGIN ETH_Init 1 */
+
+  /* USER CODE END ETH_Init 1 */
+  heth.Instance = ETH;
+  MACAddr[0] = 0x00;
+  MACAddr[1] = 0x80;
+  MACAddr[2] = 0xE1;
+  MACAddr[3] = 0x00;
+  MACAddr[4] = 0x00;
+  MACAddr[5] = 0x00;
+  heth.Init.MACAddr = &MACAddr[0];
+  heth.Init.MediaInterface = HAL_ETH_RMII_MODE;
+  heth.Init.TxDesc = DMATxDscrTab;
+  heth.Init.RxDesc = DMARxDscrTab;
+  heth.Init.RxBuffLen = 1524;
+
+  /* USER CODE BEGIN MACADDRESS */
+
+  /* USER CODE END MACADDRESS */
+
+  if (HAL_ETH_Init(&heth) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  memset(&TxConfig, 0 , sizeof(ETH_TxPacketConfigTypeDef));
+  TxConfig.Attributes = ETH_TX_PACKETS_FEATURES_CSUM | ETH_TX_PACKETS_FEATURES_CRCPAD;
+  TxConfig.ChecksumCtrl = ETH_CHECKSUM_IPHDR_PAYLOAD_INSERT_PHDR_CALC;
+  TxConfig.CRCPadCtrl = ETH_CRC_PAD_INSERT;
+  /* USER CODE BEGIN ETH_Init 2 */
+
+  /* USER CODE END ETH_Init 2 */
+
+}
+
+/**
   * @brief GPDMA1 Initialization Function
   * @param None
   * @retval None
@@ -598,6 +687,38 @@ static void MX_GPDMA1_Init(void)
   /* USER CODE BEGIN GPDMA1_Init 2 */
 
   /* USER CODE END GPDMA1_Init 2 */
+
+}
+
+/**
+  * @brief ICACHE Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ICACHE_Init(void)
+{
+
+  /* USER CODE BEGIN ICACHE_Init 0 */
+
+  /* USER CODE END ICACHE_Init 0 */
+
+  /* USER CODE BEGIN ICACHE_Init 1 */
+
+  /* USER CODE END ICACHE_Init 1 */
+
+  /** Enable instruction cache in 1-way (direct mapped cache)
+  */
+  if (HAL_ICACHE_ConfigAssociativityMode(ICACHE_1WAY) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_ICACHE_Enable() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ICACHE_Init 2 */
+
+  /* USER CODE END ICACHE_Init 2 */
 
 }
 
@@ -670,22 +791,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
-  /*Configure GPIO pins : RMII_MDC_Pin RMII_RXD0_Pin RMII_RXD1_Pin */
-  GPIO_InitStruct.Pin = RMII_MDC_Pin|RMII_RXD0_Pin|RMII_RXD1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : RMII_REF_CLK_Pin RMII_MDIO_Pin RMII_CRS_DV_Pin */
-  GPIO_InitStruct.Pin = RMII_REF_CLK_Pin|RMII_MDIO_Pin|RMII_CRS_DV_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pin : VBUS_SENSE_Pin */
   GPIO_InitStruct.Pin = VBUS_SENSE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
@@ -697,14 +802,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : RMII_TXD1_Pin */
-  GPIO_InitStruct.Pin = RMII_TXD1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
-  HAL_GPIO_Init(RMII_TXD1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : UCPD_FLT_Pin */
   GPIO_InitStruct.Pin = UCPD_FLT_Pin;
@@ -720,14 +817,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_USB;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RMII_TXT_EN_Pin RMI_TXD0_Pin */
-  GPIO_InitStruct.Pin = RMII_TXT_EN_Pin|RMI_TXD0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
   /*Configure GPIO pins : ARD_D1_TX_Pin ARD_D0_RX_Pin */
   GPIO_InitStruct.Pin = ARD_D1_TX_Pin|ARD_D0_RX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -742,6 +831,41 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+// Für ETH
+/**
+ * @brief  Setup the network interface
+ *   None
+ * @retval None
+ */
+static void Netif_Config(void) {
+      ip_addr_t ipaddr;
+      ip_addr_t netmask;
+      ip_addr_t gw;
+#if LWIP_DHCP
+      ip_addr_set_zero_ip4(&ipaddr);
+      ip_addr_set_zero_ip4(&netmask);
+      ip_addr_set_zero_ip4(&gw);
+#else
+  /* IP address default setting */
+  IP4_ADDR(&ipaddr, IP_ADDR0, IP_ADDR1, IP_ADDR2, IP_ADDR3);
+  IP4_ADDR(&netmask, NETMASK_ADDR0, NETMASK_ADDR1 , NETMASK_ADDR2, NETMASK_ADDR3);
+  IP4_ADDR(&gw, GW_ADDR0, GW_ADDR1, GW_ADDR2, GW_ADDR3);
+#endif
+      /* add the network interface */
+      netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init,
+                   &ethernet_input);
+      /*  Registers the default network interface */
+      netif_set_default(&gnetif);
+#if LWIP_NETIF_LINK_CALLBACK
+      netif_set_link_callback(&gnetif, ethernet_link_status_updated);
+      dhcp_start(&gnetif);
+      ethernet_link_status_updated(&gnetif);
+#endif
+}
+
+
+// End für ETH
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == UART4)
