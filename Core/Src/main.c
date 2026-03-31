@@ -32,6 +32,10 @@
 #include "netif/etharp.h"
 #include "lwip/netif.h"
 #include "lwip/timeouts.h"
+
+#include "lwip/udp.h"
+#include "lwip/pbuf.h"
+
 #if LWIP_DHCP
 #include "lwip/dhcp.h"
 #endif
@@ -99,6 +103,14 @@ static uint8_t rxBuf[129];
 
 volatile uint32_t rx_total_bytes = 0;
 volatile uint32_t rx_last_size = 0;
+
+// für die UDP Verbindung
+static struct udp_pcb *udp_test_pcb = NULL;
+static ip_addr_t udp_target_ip;
+static uint16_t udp_target_port = 5005;
+static uint32_t udp_test_counter = 0;
+
+
 
 // Variable für Status von Callback
 volatile HAL_StatusTypeDef rx_restart_status = HAL_OK;
@@ -180,6 +192,13 @@ static void MX_GPIO_Init(void);
 static void MX_GPDMA1_Init(void);
 static void MX_UART4_Init(void);
 static uint16_t imu_calculate_crc(const uint8_t *data, uint16_t length);
+
+
+// für UDP
+
+static void UDP_Test_Init(void);
+static void UDP_Test_Send(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -515,6 +534,15 @@ int main(void)
     Error_Handler();
   }
 
+
+
+  char ip_str[16];
+  ip4addr_ntoa_r(netif_ip4_addr(&gnetif), ip_str, sizeof(ip_str));
+  printf("Configured static IPv4 address: %s\r\n", ip_str);
+
+  // UDP Init
+  UDP_Test_Init();
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -522,15 +550,15 @@ int main(void)
 
 	  //process_new_dma_data();
 
-	  /*
+/*
 
 	     printf("headers=%lu frames=%lu error crc=%lu error etx=%lu error length=%lu er\r\n",
 	            (unsigned long)parser_header_count,
 	            (unsigned long)parser_frame_count,
-	            (unsigned long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
+	            (unsignedw long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
+
 
 */
-
 
 	    //BSP_LED_Toggle(LED_GREEN);
 
@@ -547,6 +575,8 @@ int main(void)
 	    #if LWIP_DHCP
 	                 DHCP_Periodic_Handle(&gnetif);
 	    #endif
+
+	    UDP_Test_Send();
 
 	    HAL_Delay(500);
 
@@ -857,15 +887,102 @@ static void Netif_Config(void) {
                    &ethernet_input);
       /*  Registers the default network interface */
       netif_set_default(&gnetif);
+
 #if LWIP_NETIF_LINK_CALLBACK
       netif_set_link_callback(&gnetif, ethernet_link_status_updated);
-      dhcp_start(&gnetif);
-      ethernet_link_status_updated(&gnetif);
+      // dhcp_start(&gnetif);
+      // ethernet_link_status_updated(&gnetif);
 #endif
+
+#if LWIP_DHCP
+    dhcp_start(&gnetif);
+    ethernet_link_status_updated(&gnetif);
+#endif
+
 }
 
 
+
 // End für ETH
+
+// Für UDP
+
+static void UDP_Test_Init(void)
+{
+    err_t err;
+
+    udp_test_pcb = udp_new();
+    if (udp_test_pcb == NULL)
+    {
+        printf("UDP init failed: udp_new() returned NULL\r\n");
+        return;
+    }
+
+    IP4_ADDR(&udp_target_ip, 10, 97, 106, 144);
+
+    err = udp_connect(udp_test_pcb, &udp_target_ip, udp_target_port);
+    if (err != ERR_OK)
+    {
+        printf("UDP init failed: udp_connect() error = %d\r\n", err);
+        udp_remove(udp_test_pcb);
+        udp_test_pcb = NULL;
+        return;
+    }
+
+    printf("UDP init OK: target=%s port=%u\r\n", "10.97.106.144", udp_target_port);
+}
+
+
+static void UDP_Test_Send(void)
+{
+    char msg[64];
+    int len;
+    struct pbuf *p;
+
+    if (udp_test_pcb == NULL)
+    {
+        return;
+    }
+
+    len = snprintf(msg, sizeof(msg), "Hello from STM32, cnt=%lu",
+                   (unsigned long)udp_test_counter++);
+
+    if (len <= 0)
+    {
+        return;
+    }
+
+    if (len > (int)sizeof(msg))
+    {
+        len = sizeof(msg);
+    }
+
+    p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)len, PBUF_RAM);
+    if (p == NULL)
+    {
+        printf("UDP send failed: pbuf_alloc() returned NULL\r\n");
+        return;
+    }
+
+    memcpy(p->payload, msg, (size_t)len);
+
+    err_t err;
+
+    err = udp_send(udp_test_pcb, p);
+
+    if (err != ERR_OK)
+    {
+        printf("UDP send failed, err=%d\r\n", err);
+    }
+    else
+    {
+        printf("UDP sent: %s\r\n", msg);
+    }
+
+    pbuf_free(p);
+}
+
+// End für UDP
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == UART4)

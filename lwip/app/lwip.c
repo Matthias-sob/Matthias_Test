@@ -39,16 +39,25 @@ uint8_t DHCP_state = DHCP_OFF;
 
 void ethernet_link_status_updated(struct netif *netif)
 {
+#if LWIP_DHCP
   if (netif_is_link_up(netif))
- {
-    /* Update DHCP state machine */
+  {
     DHCP_state = DHCP_START;
   }
   else
   {
-    /* Update DHCP state machine */
     DHCP_state = DHCP_LINK_DOWN;
   }
+#else
+  if (netif_is_link_up(netif))
+  {
+    printf("Ethernet link up\n");
+  }
+  else
+  {
+    printf("Ethernet link down\n");
+  }
+#endif
 }
 
 #if LWIP_NETIF_LINK_CALLBACK
