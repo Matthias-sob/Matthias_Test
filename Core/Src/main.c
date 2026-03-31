@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "SensorData.h"
+
 #include "lwip.h"
 #include "ethernetif.h"
 #include "lwip/opt.h"
@@ -107,7 +109,7 @@ volatile uint32_t rx_last_size = 0;
 // für die UDP Verbindung
 static struct udp_pcb *udp_test_pcb = NULL;
 static ip_addr_t udp_target_ip;
-static uint16_t udp_target_port = 5005;
+static uint16_t udp_target_port = 8575;
 static uint32_t udp_test_counter = 0;
 
 
@@ -171,6 +173,10 @@ volatile uint32_t parser_header_count = 0;
 
 volatile uint32_t parser_imu_print_count = 0;
 
+
+// Variable die mit IMU Daten befüllt wird
+tSensorData txMsg;
+
 //###############################################################################
 /* USER CODE END PV */
 
@@ -205,6 +211,72 @@ static void UDP_Test_Send(void);
 /* USER CODE BEGIN 0 */
 #define RB_SIZE 4096u
 #define RB_MASK (RB_SIZE - 1u)
+
+// IMU Daten packen und senden
+
+static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
+{
+    static float last_time = 0.0f;
+
+    if ((udp_test_pcb == NULL) || (imu == NULL))
+    {
+        return;
+    }
+
+    tSensorData txMsg;
+    memset(&txMsg, 0, sizeof(txMsg));
+
+    txMsg.Ident.ID = SENSOR_ID_IMURATES_SINGLE_PRE;
+    txMsg.Ident.SubID = SENSOR_SUBID_MEMS_MINI_V12_0;
+    txMsg.Ident.Index =  1u;//(uint32_t)imu->index;
+
+    /* Zeitbasis:
+       Hier zunächst direkte Übernahme als float.
+       Falls dein Zeitstempel in ms ist, später ggf. * 0.001f verwenden.
+    */
+    txMsg.Values.MiniImuOpRates.Time = (float)imu->time_stamp * 1e-6f;
+
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[0] = imu->rate_x;
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[1] = imu->rate_y;
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[2] = imu->rate_z;
+
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[0] = imu->accel_x;
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[1] = imu->accel_y;
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[2] = imu->accel_z;
+
+    txMsg.Values.MiniImuOpRates.DeltaTime =
+        txMsg.Values.MiniImuOpRates.Time - last_time;
+
+    last_time = txMsg.Values.MiniImuOpRates.Time;
+
+    txMsg.Values.MiniImuOpRates.Validity.vTime = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_X = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Y = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Z = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_X = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Y = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Z = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vTimePeriod = 1u;
+
+    txMsg.Values.MiniImuOpRates.errorCode = 0u;
+
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)sizeof(txMsg), PBUF_RAM);
+    if (p == NULL)
+    {
+        printf("UDP send failed: pbuf_alloc() returned NULL\r\n");
+        return;
+    }
+
+    memcpy(p->payload, &txMsg, sizeof(txMsg));
+
+    err_t err = udp_send(udp_test_pcb, p);
+    if (err != ERR_OK)
+    {
+        printf("UDP send failed, err=%d\r\n", err);
+    }
+
+    pbuf_free(p);
+}
 
 
 // CRC Check Funktion
@@ -389,8 +461,9 @@ static void imu_parser_feed(uint8_t byte)
 
                         if ((parser_imu_print_count % 5u) == 0u)
                         {
-                            print_imu_data(imu);
+                            //print_imu_data(imu);
                         }
+                        UDP_Send_ImuToPlotter(imu);
                     }
                 }
                 else
@@ -548,17 +621,17 @@ int main(void)
   while (1)
   {
 
-	  //process_new_dma_data();
+	  process_new_dma_data();
+
 
 /*
-
-	     printf("headers=%lu frames=%lu error crc=%lu error etx=%lu error length=%lu er\r\n",
+	  printf("headers=%lu frames=%lu error crc=%lu error etx=%lu error length=%lu er\r\n",
 	            (unsigned long)parser_header_count,
 	            (unsigned long)parser_frame_count,
-	            (unsignedw long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
-
-
+	            (unsigned long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
 */
+
+
 
 	    //BSP_LED_Toggle(LED_GREEN);
 
@@ -576,9 +649,9 @@ int main(void)
 	                 DHCP_Periodic_Handle(&gnetif);
 	    #endif
 
-	    UDP_Test_Send();
+	    //UDP_Test_Send();
 
-	    HAL_Delay(500);
+	    HAL_Delay(100);
 
     /* USER CODE END WHILE */
 
@@ -935,40 +1008,53 @@ static void UDP_Test_Init(void)
 
 static void UDP_Test_Send(void)
 {
-    char msg[64];
-    int len;
-    struct pbuf *p;
-
     if (udp_test_pcb == NULL)
     {
         return;
     }
 
-    len = snprintf(msg, sizeof(msg), "Hello from STM32, cnt=%lu",
-                   (unsigned long)udp_test_counter++);
+    tSensorData txMsg;
+    memset(&txMsg, 0, sizeof(txMsg));
 
-    if (len <= 0)
-    {
-        return;
-    }
+    txMsg.Ident.ID = SENSOR_ID_IMURATES_SINGLE_PRE;
+    txMsg.Ident.SubID = SENSOR_SUBID_MEMS_MINI_V12_0;
+    txMsg.Ident.Index = 1u;
 
-    if (len > (int)sizeof(msg))
-    {
-        len = sizeof(msg);
-    }
+    txMsg.Values.MiniImuOpRates.Time = (float)udp_test_counter * 0.01f;
 
-    p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)len, PBUF_RAM);
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[0] = 0.1f;
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[1] = 0.2f;
+    txMsg.Values.MiniImuOpRates.AngularRateIBB[2] = 0.3f;
+
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[0] = 9.81f;
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[1] = 0.0f;
+    txMsg.Values.MiniImuOpRates.AccelerationIBB[2] = 0.0f;
+
+    txMsg.Values.MiniImuOpRates.DeltaTime = 0.01f;
+
+    txMsg.Values.MiniImuOpRates.Validity.vTime = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_X = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Y = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Z = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_X = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Y = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Z = 1u;
+    txMsg.Values.MiniImuOpRates.Validity.vTimePeriod = 1u;
+
+    txMsg.Values.MiniImuOpRates.errorCode = 0u;
+
+    uint16_t len = (uint16_t)sizeof(tSensorData);
+
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
     if (p == NULL)
     {
         printf("UDP send failed: pbuf_alloc() returned NULL\r\n");
         return;
     }
 
-    memcpy(p->payload, msg, (size_t)len);
+    memcpy(p->payload, &txMsg, len);
 
-    err_t err;
-
-    err = udp_send(udp_test_pcb, p);
+    err_t err = udp_send(udp_test_pcb, p);
 
     if (err != ERR_OK)
     {
@@ -976,12 +1062,12 @@ static void UDP_Test_Send(void)
     }
     else
     {
-        printf("UDP sent: %s\r\n", msg);
+        printf("UDP sent IMURATES_SINGLE_PRE cnt=%lu\r\n", (unsigned long)udp_test_counter);
     }
 
     pbuf_free(p);
+    udp_test_counter++;
 }
-
 // End für UDP
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
