@@ -89,6 +89,8 @@ DMA_NodeTypeDef Node_GPDMA1_Channel7;
 DMA_QListTypeDef List_GPDMA1_Channel7;
 DMA_HandleTypeDef handle_GPDMA1_Channel7;
 
+// Test 08_05
+
 /* USER CODE BEGIN PV */
 // ###############################################################################
 
@@ -228,7 +230,7 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
 
     txMsg.Ident.ID = SENSOR_ID_IMURATES_SINGLE_PRE;
     txMsg.Ident.SubID = SENSOR_SUBID_MEMS_MINI_V12_0;
-    txMsg.Ident.Index =  1u;//(uint32_t)imu->index;
+    txMsg.Ident.Index = (uint32_t)imu->index;
 
     /* Zeitbasis:
        Hier zunächst direkte Übernahme als float.
@@ -461,7 +463,7 @@ static void imu_parser_feed(uint8_t byte)
 
                         if ((parser_imu_print_count % 5u) == 0u)
                         {
-                            //print_imu_data(imu);
+                           // print_imu_data(imu);
                         }
                         UDP_Send_ImuToPlotter(imu);
                     }
@@ -639,9 +641,9 @@ int main(void)
 
 	    /* Read a received packet from the Ethernet buffers and send it
 	                  to the lwIP for handling */
-	                 ethernetif_input(&gnetif);
+	    ethernetif_input(&gnetif);
 	                 /* Handle timeouts */
-	                 sys_check_timeouts();
+	    sys_check_timeouts();
 	    #if LWIP_NETIF_LINK_CALLBACK
 	                 Ethernet_Link_Periodic_Handle(&gnetif);
 	    #endif
@@ -651,7 +653,7 @@ int main(void)
 
 	    //UDP_Test_Send();
 
-	    HAL_Delay(100);
+	    //HAL_Delay(100);
 
     /* USER CODE END WHILE */
 
@@ -974,7 +976,7 @@ static void Netif_Config(void) {
 
 }
 
-
+// Test 08_05
 
 // End für ETH
 
@@ -991,7 +993,7 @@ static void UDP_Test_Init(void)
         return;
     }
 
-    IP4_ADDR(&udp_target_ip, 10, 97, 106, 144);
+    IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
 
     err = udp_connect(udp_test_pcb, &udp_target_ip, udp_target_port);
     if (err != ERR_OK)
@@ -1002,7 +1004,7 @@ static void UDP_Test_Init(void)
         return;
     }
 
-    printf("UDP init OK: target=%s port=%u\r\n", "10.97.106.144", udp_target_port);
+    printf("UDP init OK: target=%s port=%u\r\n", "10.97.106.101", udp_target_port);
 }
 
 
