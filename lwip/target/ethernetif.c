@@ -407,6 +407,8 @@ void ethernet_link_check_state(struct netif *netif)
 
   PHYLinkState = LAN8742_GetLinkState(&LAN8742);
 
+  //printf("PHYLinkState=%ld\r\n", (long)PHYLinkState);
+
   if(netif_is_link_up(netif) && (PHYLinkState <= LAN8742_STATUS_LINK_DOWN))
   {
     HAL_ETH_Stop(&heth);

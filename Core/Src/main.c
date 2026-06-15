@@ -89,8 +89,6 @@ DMA_NodeTypeDef Node_GPDMA1_Channel7;
 DMA_QListTypeDef List_GPDMA1_Channel7;
 DMA_HandleTypeDef handle_GPDMA1_Channel7;
 
-// Test 08_05
-
 /* USER CODE BEGIN PV */
 // ###############################################################################
 
@@ -113,6 +111,7 @@ static struct udp_pcb *udp_test_pcb = NULL;
 static ip_addr_t udp_target_ip;
 static uint16_t udp_target_port = 8575;
 static uint32_t udp_test_counter = 0;
+
 
 
 
@@ -262,6 +261,7 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
 
     txMsg.Values.MiniImuOpRates.errorCode = 0u;
 
+
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)sizeof(txMsg), PBUF_RAM);
     if (p == NULL)
     {
@@ -269,9 +269,18 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
         return;
     }
 
+
     memcpy(p->payload, &txMsg, sizeof(txMsg));
 
+/*
+    if (!netif_is_link_up(&gnetif))
+    {
+        return;   // Link noch nicht da – gar nicht erst senden
+    }
+    */
+
     err_t err = udp_send(udp_test_pcb, p);
+
     if (err != ERR_OK)
     {
         printf("UDP send failed, err=%d\r\n", err);
@@ -440,7 +449,7 @@ static void imu_parser_feed(uint8_t byte)
         case PARSER_READ_ETX:
             parser_etx = byte;
 
-            if (parser_etx == 0x03)
+            if (parser_etx == 0x33)
             {
                 crc_input_buffer[0] = parser_msg_id;
                 crc_input_buffer[1] = parser_len_lsb;
@@ -463,7 +472,7 @@ static void imu_parser_feed(uint8_t byte)
 
                         if ((parser_imu_print_count % 5u) == 0u)
                         {
-                           // print_imu_data(imu);
+        //                    print_imu_data(imu);
                         }
                         UDP_Send_ImuToPlotter(imu);
                     }
@@ -527,11 +536,13 @@ static void process_new_dma_data(void)
             uint8_t byte = dma_rx_buf[i];
             imu_parser_feed(byte);
         }
+
+
     }
-
-
-
     dma_last_pos = dma_pos;
+
+
+
 }
 
 
@@ -580,6 +591,7 @@ int main(void)
 
   lwip_init();
   Netif_Config();
+  UDP_Test_Init();
 
   // End für ETH
 
@@ -609,15 +621,6 @@ int main(void)
     Error_Handler();
   }
 
-
-
-  char ip_str[16];
-  ip4addr_ntoa_r(netif_ip4_addr(&gnetif), ip_str, sizeof(ip_str));
-  printf("Configured static IPv4 address: %s\r\n", ip_str);
-
-  // UDP Init
-  UDP_Test_Init();
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -631,11 +634,10 @@ int main(void)
 	            (unsigned long)parser_header_count,
 	            (unsigned long)parser_frame_count,
 	            (unsigned long)parser_crc_error_count, parser_etx_error_count, parser_frame_error_count );
+
 */
 
-
-
-	    //BSP_LED_Toggle(LED_GREEN);
+	    BSP_LED_Toggle(LED_GREEN);
 
 
 
@@ -651,9 +653,12 @@ int main(void)
 	                 DHCP_Periodic_Handle(&gnetif);
 	    #endif
 
-	    //UDP_Test_Send();
-
 	    //HAL_Delay(100);
+	   // UDP_Test_Send();
+
+
+
+
 
     /* USER CODE END WHILE */
 
@@ -680,18 +685,20 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 250;
+  RCC_OscInitStruct.PLL.PLLN = 31;
   RCC_OscInitStruct.PLL.PLLP = 2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_1;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_3;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
-  RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  RCC_OscInitStruct.PLL.PLLFRACN = 2048;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -843,7 +850,7 @@ static void MX_UART4_Init(void)
 
   /* USER CODE END UART4_Init 1 */
   huart4.Instance = UART4;
-  huart4.Init.BaudRate = 256000;
+  huart4.Init.BaudRate = 2000000;
   huart4.Init.WordLength = UART_WORDLENGTH_8B;
   huart4.Init.StopBits = UART_STOPBITS_1;
   huart4.Init.Parity = UART_PARITY_NONE;
@@ -993,6 +1000,10 @@ static void UDP_Test_Init(void)
         return;
     }
 
+    // Physikalischer SPA Matthias
+    //IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
+
+    //Messplatz Inertiallabor
     IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
 
     err = udp_connect(udp_test_pcb, &udp_target_ip, udp_target_port);
@@ -1004,7 +1015,7 @@ static void UDP_Test_Init(void)
         return;
     }
 
-    printf("UDP init OK: target=%s port=%u\r\n", "10.97.106.101", udp_target_port);
+    printf("UDP init OK: target=%s =%u\r\n", "10.97.106.101", udp_target_port);
 }
 
 
@@ -1012,7 +1023,8 @@ static void UDP_Test_Send(void)
 {
     if (udp_test_pcb == NULL)
     {
-        return;
+    	//printf("im Return");
+    	return;
     }
 
     tSensorData txMsg;
@@ -1081,7 +1093,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         // Bytes in Ringbuffer schreiben
         rb_write_bytes(rxBuf, Size);
 
-        //printf("Empfangen: %s\r\n", rxBuf);
+        printf("Empfangen: %s\r\n", rxBuf);
         BSP_LED_Toggle(LED_YELLOW);
 
         rx_restart_status = HAL_UARTEx_ReceiveToIdle_IT(&huart4, rxBuf, sizeof(rxBuf));
