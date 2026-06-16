@@ -9,8 +9,8 @@ extern "C" {
 
 #pragma pack(push, 1)
 
-/* Unterstützte Sensor-ID für den Plotter */
-#define SENSOR_ID_IMURATES_SINGLE_PRE       0x0000000Au
+/* Unterstützte Sensor-ID für den Plotter (double precision) */
+#define SENSOR_ID_IMURATES_DOUBLE           0x00000008u
 
 /* Beispielhafte IMU-SubID */
 #define SENSOR_SUBID_MEMS_MINI_V12_0        0x00000107u
@@ -24,10 +24,10 @@ typedef struct
 
 typedef struct
 {
-    float Time;
-    float AngularRateIBB[3];
-    float AccelerationIBB[3];
-    float DeltaTime;
+    double Time;
+    double AngularRateIBB[3];
+    double AccelerationIBB[3];
+    double TimePeriod;
 
     struct
     {
@@ -39,15 +39,16 @@ typedef struct
         uint32_t vAccelerationIBB_Y : 1;
         uint32_t vAccelerationIBB_Z : 1;
         uint32_t vTimePeriod        : 1;
-        uint32_t reserved           : 24;
+        uint32_t vCheckSum          : 1;
+        uint32_t reserved           : 23;
     } Validity;
 
     uint32_t errorCode;
-} tMiniImuOpRates;
+} tImuRates;   /* IMURates (double precision) - ID: 0x00000008 */
 
 typedef union
 {
-    tMiniImuOpRates MiniImuOpRates;
+    tImuRates ImuRates;
 } tSensorMeasurement;
 
 typedef struct

@@ -217,7 +217,7 @@ static void UDP_Test_Send(void);
 
 static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
 {
-    static float last_time = 0.0f;
+    static double last_time = 0.0f;
 
     if ((udp_test_pcb == NULL) || (imu == NULL))
     {
@@ -227,39 +227,34 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
     tSensorData txMsg;
     memset(&txMsg, 0, sizeof(txMsg));
 
-    txMsg.Ident.ID = SENSOR_ID_IMURATES_SINGLE_PRE;
+    txMsg.Ident.ID = SENSOR_ID_IMURATES_DOUBLE;
     txMsg.Ident.SubID = SENSOR_SUBID_MEMS_MINI_V12_0;
     txMsg.Ident.Index = (uint32_t)imu->index;
 
-    /* Zeitbasis:
-       Hier zunächst direkte Übernahme als float.
-       Falls dein Zeitstempel in ms ist, später ggf. * 0.001f verwenden.
-    */
-    txMsg.Values.MiniImuOpRates.Time = (float)imu->time_stamp * 1e-6f;
 
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[0] = imu->rate_x;
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[1] = imu->rate_y;
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[2] = imu->rate_z;
+    txMsg.Values.ImuRates.Time = (double)imu->time_stamp * 1e-6;
+    txMsg.Values.ImuRates.AngularRateIBB[0] = (double)imu->rate_x;
+    txMsg.Values.ImuRates.AngularRateIBB[1] = (double)imu->rate_y;
+    txMsg.Values.ImuRates.AngularRateIBB[2] = (double)imu->rate_z;
 
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[0] = imu->accel_x;
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[1] = imu->accel_y;
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[2] = imu->accel_z;
+    txMsg.Values.ImuRates.AccelerationIBB[0] = (double)imu->accel_x;
+    txMsg.Values.ImuRates.AccelerationIBB[1] = (double)imu->accel_y;
+    txMsg.Values.ImuRates.AccelerationIBB[2] = (double)imu->accel_z;
 
-    txMsg.Values.MiniImuOpRates.DeltaTime =
-        txMsg.Values.MiniImuOpRates.Time - last_time;
+    txMsg.Values.ImuRates.TimePeriod = txMsg.Values.ImuRates.Time - last_time;
+    last_time = txMsg.Values.ImuRates.Time;
 
-    last_time = txMsg.Values.MiniImuOpRates.Time;
+    txMsg.Values.ImuRates.Validity.vTime              = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_X  = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_Y  = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_Z  = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_X = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_Y = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_Z = 1u;
+    txMsg.Values.ImuRates.Validity.vTimePeriod        = 1u;
+    txMsg.Values.ImuRates.Validity.vCheckSum          = 0u;
 
-    txMsg.Values.MiniImuOpRates.Validity.vTime = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_X = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Y = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Z = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_X = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Y = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Z = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vTimePeriod = 1u;
-
-    txMsg.Values.MiniImuOpRates.errorCode = 0u;
+    txMsg.Values.ImuRates.errorCode = 0u;
 
 
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, (u16_t)sizeof(txMsg), PBUF_RAM);
@@ -275,7 +270,7 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
 /*
     if (!netif_is_link_up(&gnetif))
     {
-        return;   // Link noch nicht da – gar nicht erst senden
+        return;   //
     }
     */
 
@@ -1023,39 +1018,39 @@ static void UDP_Test_Send(void)
 {
     if (udp_test_pcb == NULL)
     {
-    	//printf("im Return");
-    	return;
+        printf("im Return");
+        return;
     }
+
 
     tSensorData txMsg;
     memset(&txMsg, 0, sizeof(txMsg));
 
-    txMsg.Ident.ID = SENSOR_ID_IMURATES_SINGLE_PRE;
+    txMsg.Ident.ID    = SENSOR_ID_IMURATES_DOUBLE;
     txMsg.Ident.SubID = SENSOR_SUBID_MEMS_MINI_V12_0;
     txMsg.Ident.Index = 1u;
 
-    txMsg.Values.MiniImuOpRates.Time = (float)udp_test_counter * 0.01f;
+    txMsg.Values.ImuRates.Time = (double)udp_test_counter * 0.01;
+    txMsg.Values.ImuRates.AngularRateIBB[0] = 0.1;
+    txMsg.Values.ImuRates.AngularRateIBB[1] = 0.2;
+    txMsg.Values.ImuRates.AngularRateIBB[2] = 0.3;
 
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[0] = 0.1f;
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[1] = 0.2f;
-    txMsg.Values.MiniImuOpRates.AngularRateIBB[2] = 0.3f;
+    txMsg.Values.ImuRates.AccelerationIBB[0] = 9.81;
+    txMsg.Values.ImuRates.AccelerationIBB[1] = 0.0;
+    txMsg.Values.ImuRates.AccelerationIBB[2] = 0.0;
 
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[0] = 9.81f;
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[1] = 0.0f;
-    txMsg.Values.MiniImuOpRates.AccelerationIBB[2] = 0.0f;
+    txMsg.Values.ImuRates.TimePeriod = 0.01;
+    txMsg.Values.ImuRates.Validity.vTime              = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_X  = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_Y  = 1u;
+    txMsg.Values.ImuRates.Validity.vAngularRateIBB_Z  = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_X = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_Y = 1u;
+    txMsg.Values.ImuRates.Validity.vAccelerationIBB_Z = 1u;
+    txMsg.Values.ImuRates.Validity.vTimePeriod        = 1u;
+    txMsg.Values.ImuRates.Validity.vCheckSum          = 0u;
 
-    txMsg.Values.MiniImuOpRates.DeltaTime = 0.01f;
-
-    txMsg.Values.MiniImuOpRates.Validity.vTime = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_X = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Y = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAngularRateIBB_Z = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_X = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Y = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vAccelerationIBB_Z = 1u;
-    txMsg.Values.MiniImuOpRates.Validity.vTimePeriod = 1u;
-
-    txMsg.Values.MiniImuOpRates.errorCode = 0u;
+    txMsg.Values.ImuRates.errorCode = 0u;
 
     uint16_t len = (uint16_t)sizeof(tSensorData);
 
@@ -1076,7 +1071,7 @@ static void UDP_Test_Send(void)
     }
     else
     {
-        printf("UDP sent IMURATES_SINGLE_PRE cnt=%lu\r\n", (unsigned long)udp_test_counter);
+        printf("UDP sent IMURATES_DOUBLE cnt=%lu\r\n", (unsigned long)udp_test_counter);
     }
 
     pbuf_free(p);
