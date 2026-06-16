@@ -1001,10 +1001,10 @@ static void UDP_Test_Init(void)
     }
 
     // Physikalischer SPA Matthias
-    //IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
+    IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
 
     //Messplatz Inertiallabor
-    IP4_ADDR(&udp_target_ip, 10, 97, 106, 101);
+    //IP4_ADDR(&udp_target_ip, 10, 97, 106, 57);
 
     err = udp_connect(udp_test_pcb, &udp_target_ip, udp_target_port);
     if (err != ERR_OK)
