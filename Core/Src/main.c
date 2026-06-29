@@ -217,7 +217,11 @@ static void UDP_Test_Send(void);
 
 static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
 {
-    static double last_time = 0.0f;
+    /* Variante B: 32-bit-µs-Überlauf pro Sensor-Index rekonstruieren */
+    static uint8_t  ts_init[8]     = {0};
+    static uint32_t last_raw_us[8] = {0};
+    static uint64_t base_us[8]     = {0};
+    static double   last_time[8]   = {0.0};
 
     if ((udp_test_pcb == NULL) || (imu == NULL))
     {
@@ -232,7 +236,28 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
     txMsg.Ident.Index = (uint32_t)imu->index;
 
 
-    txMsg.Values.ImuRates.Time = (double)imu->time_stamp * 1e-6;
+    /* --- Variante B: Überlauf des uint32-µs-Zeitstempels rekonstruieren --- */
+    uint16_t idx = imu->index;
+    if (idx >= 8u)               /* Schutz gegen ungültigen Index */
+    {
+        return;
+    }
+
+    uint8_t  first = !ts_init[idx];
+    uint32_t raw   = imu->time_stamp;
+
+    if (!first && (raw < last_raw_us[idx]) &&
+        ((last_raw_us[idx] - raw) > 0x80000000UL))   /* nur echter Wrap (>2^31) */
+    {
+        base_us[idx] += 0x100000000ULL;              /* + 2^32 µs */
+    }
+    last_raw_us[idx] = raw;
+    ts_init[idx]     = 1u;
+
+    double t = (double)(base_us[idx] + raw) * 1e-6;
+    txMsg.Values.ImuRates.Time = t;
+    /* --------------------------------------------------------------------- */
+
     txMsg.Values.ImuRates.AngularRateIBB[0] = (double)imu->rate_x;
     txMsg.Values.ImuRates.AngularRateIBB[1] = (double)imu->rate_y;
     txMsg.Values.ImuRates.AngularRateIBB[2] = (double)imu->rate_z;
@@ -241,8 +266,8 @@ static void UDP_Send_ImuToPlotter(const ImuSensorData_t *imu)
     txMsg.Values.ImuRates.AccelerationIBB[1] = (double)imu->accel_y;
     txMsg.Values.ImuRates.AccelerationIBB[2] = (double)imu->accel_z;
 
-    txMsg.Values.ImuRates.TimePeriod = txMsg.Values.ImuRates.Time - last_time;
-    last_time = txMsg.Values.ImuRates.Time;
+    txMsg.Values.ImuRates.TimePeriod = first ? 0.0 : (t - last_time[idx]);
+    last_time[idx] = t;
 
     txMsg.Values.ImuRates.Validity.vTime              = 1u;
     txMsg.Values.ImuRates.Validity.vAngularRateIBB_X  = 1u;
