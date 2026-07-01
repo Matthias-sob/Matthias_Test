@@ -126,7 +126,7 @@ volatile uint32_t rb_overruns; // zählt überläufe
 
 
 // Für DMA Zugriff
-#define DMA_RX_BUF_SIZE 1024
+#define DMA_RX_BUF_SIZE 8192
 uint8_t dma_rx_buf[DMA_RX_BUF_SIZE];
 volatile uint16_t dma_last_pos = 0;
 
@@ -870,7 +870,7 @@ static void MX_UART4_Init(void)
 
   /* USER CODE END UART4_Init 1 */
   huart4.Instance = UART4;
-  huart4.Init.BaudRate = 2000000;
+  huart4.Init.BaudRate = 6000000;
   huart4.Init.WordLength = UART_WORDLENGTH_8B;
   huart4.Init.StopBits = UART_STOPBITS_1;
   huart4.Init.Parity = UART_PARITY_NONE;
